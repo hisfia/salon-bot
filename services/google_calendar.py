@@ -116,8 +116,13 @@ def create_appointment(
     Retorna {"event_link": "...", "summary": "..."}
     """
     tz = ZoneInfo(config.SALON_TIMEZONE)
-    start_dt = datetime.fromisoformat(start_iso).astimezone(tz)
-    end_dt   = start_dt + timedelta(minutes=duration_min)
+    parsed = datetime.fromisoformat(start_iso)
+    # Si no tiene timezone, asumir que ya es hora local del salón
+    if parsed.tzinfo is None:
+        start_dt = parsed.replace(tzinfo=tz)
+    else:
+        start_dt = parsed.astimezone(tz)
+    end_dt = start_dt + timedelta(minutes=duration_min)
 
     event = {
         "summary": f"{service_name} – {client_name}",
