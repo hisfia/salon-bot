@@ -17,7 +17,7 @@ def _require(key: str) -> str:
 
 
 # ── Anthropic ────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY: str = _require("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ── ElevenLabs ───────────────────────────────────────────────────────
 ELEVENLABS_API_KEY: str = _require("ELEVENLABS_API_KEY")
