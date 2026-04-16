@@ -26,7 +26,7 @@ async def obtener_horarios_disponibles(request: Request):
     """Devuelve horarios libres para una fecha dada."""
     body = await request.json()
     fecha     = body.get("fecha", "mañana")
-    duracion  = int(body.get("duracion_min", 60))
+    duracion  = int(body.get("duracion_min", 30))
 
     try:
         from services.google_calendar import get_available_slots
@@ -47,7 +47,7 @@ async def crear_cita(request: Request):
     nombre        = body.get("nombre_cliente", "")
     email         = body.get("email_cliente", "")
     fecha_hora    = body.get("fecha_hora", "")   # ISO: "2026-04-17T10:00:00"
-    duracion      = int(body.get("duracion_min", 60))
+    duracion      = int(body.get("duracion_min", 30))
 
     if not all([nombre, email, fecha_hora]):
         return {"result": "Faltan datos: necesito nombre, email y fecha_hora."}
