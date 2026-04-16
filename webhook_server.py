@@ -30,7 +30,7 @@ async def obtener_horarios_disponibles(request: Request):
 
     try:
         from services.google_calendar import get_available_slots
-        slots = get_available_slots(fecha, duracion_min=duracion)
+        slots = get_available_slots(fecha, duration_min=duracion)
         if not slots:
             return {"result": f"No hay horarios disponibles el {fecha}."}
         lines = [f"{i+1}. {s['display']}" for i, s in enumerate(slots)]
