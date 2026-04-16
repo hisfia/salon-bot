@@ -129,12 +129,10 @@ def create_appointment(
         ),
         "start": {"dateTime": start_dt.isoformat(), "timeZone": config.SALON_TIMEZONE},
         "end":   {"dateTime": end_dt.isoformat(),   "timeZone": config.SALON_TIMEZONE},
-        "attendees": [{"email": client_email, "displayName": client_name}],
         "reminders": {
             "useDefault": False,
             "overrides": [
-                {"method": "email",  "minutes": 60},
-                {"method": "popup",  "minutes": 15},
+                {"method": "popup", "minutes": 15},
             ],
         },
     }
@@ -143,7 +141,6 @@ def create_appointment(
     created = gcal_service.events().insert(
         calendarId=config.GOOGLE_CALENDAR_ID,
         body=event,
-        sendUpdates="all",   # envía email de confirmación al cliente
     ).execute()
 
     return {
