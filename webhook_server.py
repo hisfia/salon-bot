@@ -8,7 +8,9 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request
+import asyncio
+import os
+from fastapi import FastAPI, BackgroundTasks, Request
 import uvicorn
 
 app = FastAPI(title="Salon Bot Webhooks")
@@ -34,7 +36,7 @@ async def obtener_horarios_disponibles(request: Request):
 
 
 @app.post("/crear_cita")
-async def crear_cita(request: Request):
+async def crear_cita(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
     servicio   = body.get("servicio", "Consulta")
     nombre     = body.get("nombre_cliente", "")
@@ -49,13 +51,8 @@ async def crear_cita(request: Request):
         from services.google_calendar import create_appointment
         info = create_appointment(servicio, nombre, email, fecha_hora, duracion)
 
-        # Notificar al dueño del salón por Telegram
-        try:
-            from services.telegram_bot import store_pending, send_booking_notification
-            key = store_pending(servicio, nombre, email, info["start"])
-            send_booking_notification(key, servicio, nombre, email, info["start"])
-        except Exception as te:
-            print(f"[telegram] Error: {te}")
+        # Notificar al dueño por Telegram (en segundo plano para no bloquear)
+        background_tasks.add_task(_notify_telegram, servicio, nombre, email, info["start"])
 
         return {
             "result": (
@@ -67,25 +64,31 @@ async def crear_cita(request: Request):
         return {"result": f"Error al crear la cita: {e}"}
 
 
+def _notify_telegram(servicio: str, nombre: str, email: str, datetime_str: str):
+    try:
+        from services.telegram_bot import store_pending, send_booking_notification
+        key = store_pending(servicio, nombre, email, datetime_str)
+        send_booking_notification(key, servicio, nombre, email, datetime_str)
+    except Exception as e:
+        print(f"[telegram] Error: {e}")
+
+
 # ── Telegram webhook ───────────────────────────────────────────────────────────
 
 @app.post("/telegram/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     update = await request.json()
 
     callback = update.get("callback_query")
     if not callback:
         return {"ok": True}
 
-    callback_id   = callback["id"]
-    data          = callback.get("data", "")
-    chat_id       = str(callback["message"]["chat"]["id"])
-    message_id    = callback["message"]["message_id"]
+    callback_id = callback["id"]
+    data        = callback.get("data", "")
+    chat_id     = str(callback["message"]["chat"]["id"])
+    message_id  = callback["message"]["message_id"]
 
-    from services.telegram_bot import (
-        answer_callback, edit_message_text,
-        get_pending, remove_pending,
-    )
+    from services.telegram_bot import answer_callback, get_pending
 
     if data.startswith("confirm:"):
         key = data.split(":", 1)[1]
@@ -95,49 +98,54 @@ async def telegram_webhook(request: Request):
             answer_callback(callback_id, "Esta cita ya fue procesada.")
             return {"ok": True}
 
-        # Intentar enviar email de confirmación
-        from services.email_sender import send_confirmation_email
-        import os
-        salon_name = os.getenv("SALON_NAME", "Salón Belleza Total")
+        # Responder a Telegram inmediatamente
+        answer_callback(callback_id, "⏳ Enviando confirmación...")
 
-        email_sent = send_confirmation_email(
-            client_name=booking["client_name"],
-            client_email=booking["client_email"],
-            service=booking["service"],
-            datetime_str=booking["datetime_str"],
-            salon_name=salon_name,
-        )
-
-        remove_pending(key)
-
-        if email_sent:
-            answer_callback(callback_id, "✅ Email de confirmación enviado")
-            edit_message_text(chat_id, message_id,
-                f"✅ *Cita confirmada*\n\n"
-                f"👤 {booking['client_name']} — {booking['service']}\n"
-                f"🕐 {booking['datetime_str']}\n\n"
-                f"📧 Email enviado a {booking['client_email']}"
-            )
-        else:
-            answer_callback(callback_id, "⚠️ Cita confirmada, pero email no configurado")
-            edit_message_text(chat_id, message_id,
-                f"✅ *Cita confirmada* (sin email — configura GMAIL\\_APP\\_PASSWORD)\n\n"
-                f"👤 {booking['client_name']} — {booking['service']}\n"
-                f"🕐 {booking['datetime_str']}"
-            )
+        # Procesar email en segundo plano
+        background_tasks.add_task(_confirm_booking, key, booking, chat_id, message_id)
 
     elif data.startswith("cancel:"):
         key = data.split(":", 1)[1]
+        from services.telegram_bot import get_pending, remove_pending, edit_message_text
         booking = get_pending(key)
         remove_pending(key)
-
-        answer_callback(callback_id, "Cita marcada como cancelada")
+        answer_callback(callback_id, "Cita cancelada")
         name = booking["client_name"] if booking else "cliente"
-        edit_message_text(chat_id, message_id,
-            f"❌ *Cita cancelada*\n\n👤 {name}"
-        )
+        edit_message_text(chat_id, message_id, f"❌ *Cita cancelada*\n\n👤 {name}")
 
     return {"ok": True}
+
+
+def _confirm_booking(key: str, booking: dict, chat_id: str, message_id: int):
+    from services.telegram_bot import remove_pending, edit_message_text
+    from services.email_sender import send_confirmation_email
+
+    salon_name = os.getenv("SALON_NAME", "Salón Belleza Total")
+    remove_pending(key)
+
+    email_sent = send_confirmation_email(
+        client_name=booking["client_name"],
+        client_email=booking["client_email"],
+        service=booking["service"],
+        datetime_str=booking["datetime_str"],
+        salon_name=salon_name,
+    )
+
+    if email_sent:
+        edit_message_text(chat_id, message_id,
+            f"✅ *Cita confirmada*\n\n"
+            f"👤 {booking['client_name']} — {booking['service']}\n"
+            f"🕐 {booking['datetime_str']}\n\n"
+            f"📧 Email enviado a {booking['client_email']}"
+        )
+    else:
+        print(f"[email] Fallo al enviar a {booking['client_email']}")
+        edit_message_text(chat_id, message_id,
+            f"✅ *Cita confirmada* ⚠️ Email no enviado\n\n"
+            f"👤 {booking['client_name']} — {booking['service']}\n"
+            f"🕐 {booking['datetime_str']}\n"
+            f"📧 {booking['client_email']}"
+        )
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

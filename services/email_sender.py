@@ -62,7 +62,9 @@ def send_confirmation_email(
     msg.attach(MIMEText(body_html, "html"))
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
             smtp.login(gmail_user, gmail_pass)
             smtp.sendmail(gmail_user, client_email, msg.as_string())
         return True
