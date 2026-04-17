@@ -99,7 +99,7 @@ def get_available_slots(date_str: str, duration_min: int = 60) -> list[dict[str,
             })
         cursor += timedelta(minutes=duration_min)
 
-    return slots[:10]
+    return slots[:20]
 
 
 # ── Crear cita ─────────────────────────────────────────────────────────────────
