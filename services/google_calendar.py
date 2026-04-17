@@ -95,7 +95,7 @@ def get_available_slots(date_str: str, duration_min: int = 60) -> list[dict[str,
         if not _overlaps(cursor, slot_end, busy_blocks):
             slots.append({
                 "start": cursor.isoformat(),
-                "display": cursor.strftime("%A %d/%m/%Y  %H:%M"),
+                "display": _format_slot_es(cursor),
             })
         cursor += timedelta(minutes=duration_min)
 
@@ -156,6 +156,38 @@ def create_appointment(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+_DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+def _format_slot_es(dt: datetime) -> str:
+    """Formatea un slot como texto natural español: 'lunes 20 de abril a las 5 y media de la tarde'."""
+    day_name = _DAYS_ES[dt.weekday()]
+    month_name = _MONTHS_ES[dt.month - 1]
+    date_part = f"{day_name} {dt.day} de {month_name}"
+
+    h, m = dt.hour, dt.minute
+    # Parte de la hora en formato 12h natural
+    h12 = h if h <= 12 else h - 12
+    if h12 == 0:
+        h12 = 12
+    if m == 0:
+        time_num = f"las {h12}" if h12 != 1 else "la 1"
+    elif m == 30:
+        time_num = f"las {h12} y media" if h12 != 1 else "la 1 y media"
+    else:
+        time_num = f"las {h12}:{m:02d}"
+
+    if h < 12:
+        period = "de la mañana"
+    elif h == 12:
+        period = "del mediodía"
+    else:
+        period = "de la tarde"
+
+    return f"{date_part} a {time_num} {period}"
+
 
 _DAY_NAMES_ES = {
     "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
