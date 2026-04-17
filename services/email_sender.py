@@ -1,11 +1,6 @@
 """
-Envío de emails de confirmación usando Resend (API HTTP, sin SMTP).
+Envío de emails de confirmación usando Brevo (API HTTP, sin SMTP).
 Railway bloquea SMTP saliente, pero las llamadas HTTP funcionan perfectamente.
-
-Para configurarlo:
-  1. Crea cuenta gratis en resend.com (3.000 emails/mes)
-  2. Ve a API Keys → Create API Key
-  3. Guarda la clave en RESEND_API_KEY
 """
 
 from __future__ import annotations
@@ -21,12 +16,12 @@ def send_confirmation_email(
     datetime_str: str,
     salon_name: str = "Salón Belleza Total",
 ) -> bool:
-    api_key = os.getenv("RESEND_API_KEY", "")
+    api_key = os.getenv("BREVO_API_KEY", "")
     if not api_key:
-        print("[email] RESEND_API_KEY no configurada")
+        print("[email] BREVO_API_KEY no configurada")
         return False
 
-    from_email = os.getenv("RESEND_FROM_EMAIL", f"citas@{salon_name.lower().replace(' ','-')}.com")
+    from_email = os.getenv("GMAIL_USER", "gestioneshisfia@gmail.com")
 
     html = f"""
     <html><body style="font-family:Arial,sans-serif;color:#333;max-width:500px;margin:auto">
@@ -50,19 +45,19 @@ def send_confirmation_email(
 
     try:
         r = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": api_key, "Content-Type": "application/json"},
             json={
-                "from": f"{salon_name} <{from_email}>",
-                "to": [client_email],
-                "subject": f"✅ Confirmación de cita – {salon_name}",
-                "html": html,
+                "sender":      {"name": salon_name, "email": from_email},
+                "to":          [{"email": client_email, "name": client_name}],
+                "subject":     f"✅ Confirmación de cita – {salon_name}",
+                "htmlContent": html,
             },
             timeout=15,
         )
         if r.status_code in (200, 201):
             return True
-        print(f"[email] Resend error {r.status_code}: {r.text[:200]}")
+        print(f"[email] Brevo error {r.status_code}: {r.text[:200]}")
         return False
     except Exception as e:
         print(f"[email] Error: {e}")
